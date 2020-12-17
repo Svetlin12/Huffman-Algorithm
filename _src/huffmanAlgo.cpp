@@ -3,11 +3,12 @@
 #include <string>
 #include <unordered_map>
 #include <queue>
+#include <time.h>
 using namespace std;
 
 struct node {
     char data;
-    int frequency;
+    int frequency, depth = 0;
     node* left, * right;
 
     node(int frequency, char data = '\0', node* left = nullptr, node* right = nullptr) : data(data), frequency(frequency), left(left), right(right) {}
@@ -38,9 +39,9 @@ void calculateFrequenciesFromString(string input, unordered_map<char, int>& freq
 class HuffmanTree {
 private:
 
+    string tree, serialized;
     node* root;
     unordered_map<char, string> encodingTable;
-    int height = 0;
 
     void buildHuffmanTree(priority_queue<node*, vector<node*>, CompareFrequencies>& minFreq) {
         if (minFreq.size() == 0)
@@ -54,11 +55,11 @@ private:
             minFreq.pop();
 
             node* combined = new node(first->frequency + second->frequency);
+            combined->depth = max(first->depth, second->depth) + 1;
             combined->left = first;
             combined->right = second;
 
             minFreq.push(combined);
-            height++;
         }
 
         root = minFreq.top();
@@ -69,7 +70,7 @@ private:
             dfsPrint(curr->left);
             cout << curr->frequency << " ";
             if (curr->data != '\0')
-                cout << curr->data << " ";
+                cout << "->" << curr->data << " ";
             dfsPrint(curr->right);
         }
     }
@@ -94,8 +95,85 @@ private:
 
     void buildEncodingTable() {
         string code = "";
-        code.reserve(height + 1);
+        code.reserve(root->depth + 1);
         buildEncodingTableDFSTraversal(root, code);
+    }
+
+    void serialize() {
+        queue<node*> q;
+        q.push(root);
+        while (!q.empty()) {
+            node* curr = q.front();
+            q.pop();
+            if (curr == nullptr) {
+                serialized.append("-1");
+                serialized.push_back(' ');
+                continue;
+            }
+            serialized.append(to_string(curr->frequency));
+            serialized.push_back(' ');
+            if (curr->data) {
+                serialized.append("-1 -1 ");
+                serialized.push_back(curr->data);
+                serialized.push_back(' ');
+            }
+            else {
+                q.push(curr->left);
+                q.push(curr->right);
+            }
+        }
+    }
+
+    node* deserialize() {
+        if (serialized.empty() || serialized[0] == 'N')
+            return nullptr;
+
+        string temp = "";
+        queue<pair<int, char>> nodeVals;
+        for (int i = 0; i < serialized.size(); i++) {
+            if (serialized[i] == ' ') {
+                nodeVals.push(pair<int, char>(stoi(temp), '\0'));
+                temp = "";
+                continue;
+            }
+            else if (i + 6 < serialized.size() && serialized[i] == '-' && serialized[i+1] == '1' && serialized[i+3] == '-' && serialized[i+4] == '1') {
+                nodeVals.back().second = serialized[i + 6];
+                i += 7;
+                continue;
+            }
+            temp += serialized[i];
+        }
+
+        node* newRoot = new node(nodeVals.front().first, nodeVals.front().second);
+        nodeVals.pop();
+        queue<node*> q;
+        q.push(newRoot);
+        while (!q.empty() && !nodeVals.empty()) {
+            node* curr = q.front();
+            q.pop();
+
+            pair<int, char> currChild = nodeVals.front();
+            nodeVals.pop();
+            if (currChild.first != -1) {
+                curr->left = new node(currChild.first, currChild.second);
+
+                if (curr->left->data == '\0') {
+                    q.push(curr->left);
+                }
+            }
+
+            currChild = nodeVals.front();
+            nodeVals.pop();
+            if (currChild.first != -1) {
+                curr->right = new node(currChild.first, currChild.second);
+
+                if (curr->right->data == '\0') {
+                    q.push(curr->right);
+                }
+            }
+        }
+
+        return newRoot;
     }
 
 public:
@@ -108,6 +186,7 @@ public:
 
     void print() {
         dfsPrint(root);
+        cout << "depth: " << root->depth << endl;
     }
 
     void printTable() {
@@ -118,28 +197,13 @@ public:
 
     string compressString(string& toCompress) {
         string compressed = "";
-        compressed.reserve(toCompress.size() * height);
+        compressed.reserve(toCompress.size() * root->depth);
 
         for (auto ch : toCompress) {
             compressed.append(encodingTable[ch]);
         }
 
-        if (compressed.size() % 8 != 0) {
-            do {
-                compressed.push_back('0');
-            } while (compressed.size() % 8 != 0);
-        }
-
-        return compressed;
-    }
-
-    string compressString2(string& toCompress) {
-        string compressed = "";
-        compressed.reserve(toCompress.size() * height);
-
-        for (auto ch : toCompress) {
-            compressed.append(encodingTable[ch] + " ");
-        }
+        tree = compressed;
 
         if (compressed.size() % 8 != 0) {
             do {
@@ -173,40 +237,58 @@ public:
 
         return converted;
     }
+
+    void serializeTree() {
+        serialize();
+        cout << serialized << endl;
+    }
+
+    node* deserializeTree() {
+        return deserialize();
+    }
 };
 
+void print(node* root) {
+    if (root != nullptr) {
+        print(root->left);
+        cout << root->frequency << " ";
+        if (root->data != '\0')
+            cout << "->" << root->data << " ";
+        print(root->right);
+    }
+}
+
+// TODO: use deserializedTree to convert string to its original form
+// TODO: move stdin/stdout from/to file
 int main() {
+    clock_t tStart = clock();
 
-    time_t start, end;
+    string abc = "ABRACADABRA";
+    //string abc = "A13aa-bAaB-1B3a-Aaa3b-AA3333--bbaBa---aaabbBBbab--abBaab-BBB-B--";
+    //string abc = "AByEcc 11ayXEz2zbbB BBBCbdd1X 22121cdbECdzzz  22bEbCcccddCECECECECECECbdb1b1d111";
+    //string abc = "ACAeBbCABbAbbAA";
 
-    time(&start);
-
-    string abc = "A13aa-bAaB-1B3a-Aaa3b-AA3333--bbaBa---aaabbBBbab--abBaab-BBB-B--";
     unordered_map<char, int> freq;
     priority_queue<node*, vector<node*>, CompareFrequencies> minFreq;
     calculateFrequenciesFromString(abc, freq);
     getFreq(freq, minFreq);
 
     HuffmanTree h(minFreq);
-
-    h.print();
-    cout << endl;
-    h.printTable();
-
     string compressedString = h.compressString(abc);
     cout << compressedString << endl;
 
-    cout << "00010000001101001111000110110010000110001100100011010001111010001000100100100100101011111111011010010101101010111111110110111010110111110101011101110110110011100101" << endl;
+    string convertedString = h.convertByteOutputToNumbers(compressedString);
+    cout << convertedString << endl;
 
-    cout << h.compressString2(abc) << endl;
+    h.serializeTree();
 
-    string convrtedString = h.convertByteOutputToNumbers(compressedString);
-    cout << convrtedString << endl;
+    node* root = h.deserializeTree();
 
-    time(&end);
+    h.print();
+    print(root);
+    cout << endl;
 
-    double execTime = double(end-start);
-    cout << "Execution time: " << execTime << setprecision(5) << endl;
+    cout << "Execution time: " << (double)(clock() - tStart)/CLOCKS_PER_SEC << endl;
 
     return 0;
 }
