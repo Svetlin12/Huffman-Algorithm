@@ -69,8 +69,6 @@ private:
         if (curr != nullptr) {
             dfsPrint(curr->left);
             cout << curr->frequency << " ";
-            if (curr->data != '\0')
-                cout << "->" << curr->data << " ";
             dfsPrint(curr->right);
         }
     }
@@ -176,6 +174,24 @@ private:
         return newRoot;
     }
 
+    void restoreInitialStringHelper(string& tree, node* root, string& restored) {
+        node* traverse = root;
+        int i = 0;
+        while (i < tree.size()) {
+            if (tree[i++] == '0') {
+                traverse = traverse->left;
+            }
+            else {
+                traverse = traverse->right;
+            }
+
+            if (traverse->data != '\0') {
+                restored.push_back(traverse->data);
+                traverse = root;
+            }
+        }
+    }
+
 public:
 
     HuffmanTree(priority_queue<node*, vector<node*>, CompareFrequencies> minFreq) {
@@ -246,27 +262,28 @@ public:
     node* deserializeTree() {
         return deserialize();
     }
+
+    string restoreInitialString() {
+        node* newRoot = deserializeTree();
+        string restored;
+        restoreInitialStringHelper(tree, newRoot, restored);
+        return restored;
+    }
+
+    double getDegreeOfCompression(string& initial, string& compressed) {
+        double initialBytes = initial.size() * 8;
+        return (compressed.size() / initialBytes) * 100;
+    }
 };
 
-void print(node* root) {
-    if (root != nullptr) {
-        print(root->left);
-        cout << root->frequency << " ";
-        if (root->data != '\0')
-            cout << "->" << root->data << " ";
-        print(root->right);
-    }
-}
-
-// TODO: use deserializedTree to convert string to its original form
 // TODO: move stdin/stdout from/to file
 int main() {
     clock_t tStart = clock();
 
-    string abc = "ABRACADABRA";
+    //string abc = "ABRACADABRA";
     //string abc = "A13aa-bAaB-1B3a-Aaa3b-AA3333--bbaBa---aaabbBBbab--abBaab-BBB-B--";
     //string abc = "AByEcc 11ayXEz2zbbB BBBCbdd1X 22121cdbECdzzz  22bEbCcccddCECECECECECECbdb1b1d111";
-    //string abc = "ACAeBbCABbAbbAA";
+    string abc = "ACAeBbCABbAbbAA";
 
     unordered_map<char, int> freq;
     priority_queue<node*, vector<node*>, CompareFrequencies> minFreq;
@@ -281,12 +298,11 @@ int main() {
     cout << convertedString << endl;
 
     h.serializeTree();
-
-    node* root = h.deserializeTree();
-
     h.print();
-    print(root);
-    cout << endl;
+
+    cout << abc << endl;
+    cout << h.restoreInitialString() << endl;
+    cout << h.getDegreeOfCompression(abc, compressedString) << "%" << endl;
 
     cout << "Execution time: " << (double)(clock() - tStart)/CLOCKS_PER_SEC << endl;
 
