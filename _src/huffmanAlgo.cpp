@@ -279,6 +279,31 @@ public:
 // TODO: move stdin/stdout from/to file
 int main() {
     clock_t tStart = clock();
+    
+    string fileName;
+    cin >> fileName;
+
+    cout << "Filename is: " << fileName << endl;
+
+    if (cin.fail()) {
+        cout << "Something went wrong with last input command. Ending this program." << endl;
+        return 1;
+    }
+
+    ifstream input;
+    input.open(fileName);
+
+    if (!input.is_open()) {
+        cout << "Could not open " << fileName << ". Check the spelling again" << endl;
+        return 2;
+    }
+
+    string fileString = "", str;
+    while (getline(input, str)) {
+        fileString.append(str);
+    }
+
+    cout << fileString << endl;
 
     //string abc = "ABRACADABRA";
     //string abc = "A13aa-bAaB-1B3a-Aaa3b-AA3333--bbaBa---aaabbBBbab--abBaab-BBB-B--";
