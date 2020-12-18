@@ -279,7 +279,7 @@ public:
 // TODO: move stdin/stdout from/to file
 int main() {
     clock_t tStart = clock();
-    
+
     string fileName;
     cin >> fileName;
 
