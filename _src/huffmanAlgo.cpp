@@ -23,29 +23,26 @@ public:
     }
 };
 
-void getFreq(unordered_map<char, int>& freq, priority_queue<node*, vector<node*>, CompareFrequencies>& minFreq) {
-    for (auto kvp : freq) {
-        node* newNode = new node(kvp.second, kvp.first);
-        minFreq.push(newNode);
-    }
-}
-
-void calculateFrequenciesFromString(string input, unordered_map<char, int>& freq) {
-    for (auto ch : input) {
-        freq[ch]++;
-    }
-}
-
 class HuffmanTree {
 private:
 
-    string tree, serialized;
     node* root;
+    string initialString, compressed;
+    int addedBits;
     unordered_map<char, string> encodingTable;
 
-    void buildHuffmanTree(priority_queue<node*, vector<node*>, CompareFrequencies>& minFreq) {
-        if (minFreq.size() == 0)
-            return;
+    void buildHuffmanTree() {  
+        unordered_map<char, int> freq;
+        priority_queue<node*, vector<node*>, CompareFrequencies> minFreq;
+
+        for (auto ch : initialString) {
+            freq[ch]++;
+        }
+
+        for (auto kvp : freq) {
+            node* newNode = new node(kvp.second, kvp.first);
+            minFreq.push(newNode);
+        }
 
         while (minFreq.size() != 1) {
             node* first = minFreq.top();
@@ -63,14 +60,6 @@ private:
         }
 
         root = minFreq.top();
-    }
-
-    void dfsPrint(node* curr) {
-        if (curr != nullptr) {
-            dfsPrint(curr->left);
-            cout << curr->frequency << " ";
-            dfsPrint(curr->right);
-        }
     }
 
     void buildEncodingTableDFSTraversal(node* curr, string& code) {
@@ -97,23 +86,19 @@ private:
         buildEncodingTableDFSTraversal(root, code);
     }
 
-    void serialize() {
+    void serialize(ofstream& fileStream) {
         queue<node*> q;
         q.push(root);
         while (!q.empty()) {
             node* curr = q.front();
             q.pop();
             if (curr == nullptr) {
-                serialized.append("-1");
-                serialized.push_back(' ');
+                fileStream << "-1 ";
                 continue;
             }
-            serialized.append(to_string(curr->frequency));
-            serialized.push_back(' ');
+            fileStream << curr->frequency << " ";
             if (curr->data) {
-                serialized.append("-1 -1 ");
-                serialized.push_back(curr->data);
-                serialized.push_back(' ');
+                fileStream << "-1 -1 " << curr->data << " ";
             }
             else {
                 q.push(curr->left);
@@ -122,8 +107,8 @@ private:
         }
     }
 
-    node* deserialize() {
-        if (serialized.empty() || serialized[0] == 'N')
+    node* deserialize(string& serialized) {
+        if (serialized.empty() || serialized[0] == '-')
             return nullptr;
 
         string temp = "";
@@ -134,7 +119,7 @@ private:
                 temp = "";
                 continue;
             }
-            else if (i + 6 < serialized.size() && serialized[i] == '-' && serialized[i+1] == '1' && serialized[i+3] == '-' && serialized[i+4] == '1') {
+            else if (i + 6 < serialized.size() && serialized[i] == '-' && serialized[i + 1] == '1' && serialized[i + 3] == '-' && serialized[i + 4] == '1') {
                 nodeVals.back().second = serialized[i + 6];
                 i += 7;
                 continue;
@@ -174,10 +159,10 @@ private:
         return newRoot;
     }
 
-    void restoreInitialStringHelper(string& tree, node* root, string& restored) {
+    void decompressStringHelper(string& tree, string& restored) {
         node* traverse = root;
         int i = 0;
-        while (i < tree.size()) {
+        while (i < tree.size() - addedBits) {
             if (tree[i++] == '0') {
                 traverse = traverse->left;
             }
@@ -192,53 +177,15 @@ private:
         }
     }
 
-public:
-
-    HuffmanTree(priority_queue<node*, vector<node*>, CompareFrequencies> minFreq) {
-        root = nullptr;
-        buildHuffmanTree(minFreq);
-        buildEncodingTable();
-    }
-
-    void print() {
-        dfsPrint(root);
-        cout << "depth: " << root->depth << endl;
-    }
-
-    void printTable() {
-        for (auto kvp : encodingTable) {
-            cout << kvp.first << "->" << kvp.second << endl;
-        }
-    }
-
-    string compressString(string& toCompress) {
-        string compressed = "";
-        compressed.reserve(toCompress.size() * root->depth);
-
-        for (auto ch : toCompress) {
-            compressed.append(encodingTable[ch]);
-        }
-
-        tree = compressed;
-
-        if (compressed.size() % 8 != 0) {
-            do {
-                compressed.push_back('0');
-            } while (compressed.size() % 8 != 0);
-        }
-
-        return compressed;
-    }
-
-    string convertByteOutputToNumbers(string& toConvert) {
+    string convertByteOutputToNumbers() {
         string converted = "";
-        int optimalSize = (toConvert.size() % 8) * 4;
+        int optimalSize = (compressed.size() % 8) * 4;
         converted.reserve(optimalSize);
 
         int counter = 0;
         int byteNumbers[] = { 128, 64, 32, 16, 8, 4, 2, 1 };
         int currNum = 0;
-        for (char ch : toConvert) {
+        for (char ch : compressed) {
             if (ch == '1') {
                 currNum += byteNumbers[counter];
             }
@@ -254,82 +201,189 @@ public:
         return converted;
     }
 
-    void serializeTree() {
-        serialize();
-        cout << serialized << endl;
+    void decimalToBits(int& num) {
+        int bits[] = { 128, 64, 32, 16, 8, 4, 2, 1 };
+        for (int i = 0; i < 8; i++) {
+            if (num >= bits[i]) {
+                compressed.push_back('1');
+                num -= bits[i];
+            }
+            else {
+                compressed.push_back('0');
+            }
+        }
     }
 
-    node* deserializeTree() {
-        return deserialize();
+    void convertToBits(string& decimalInput) {
+        string number;
+        number.reserve(3);
+
+        // TODO: compressed.reserve()
+        for (auto ch : decimalInput) {
+            if (ch == ' ') {
+                int num = stoi(number);
+                decimalToBits(num);
+                number.clear();
+            }
+            else {
+                number.push_back(ch);
+            }
+        }
     }
 
-    string restoreInitialString() {
-        node* newRoot = deserializeTree();
-        string restored;
-        restoreInitialStringHelper(tree, newRoot, restored);
-        return restored;
+public:
+
+    HuffmanTree() {
+        root = nullptr;
+        initialString = "";
+        compressed = "";
+        addedBits = 0;
     }
 
-    double getDegreeOfCompression(string& initial, string& compressed) {
-        double initialBytes = initial.size() * 8;
+    double getDegreeOfCompression() {
+        double initialBytes = initialString.size() * 8;
         return (compressed.size() / initialBytes) * 100;
+    }
+
+    int readFromFile(string& fileName) {
+        ifstream fileStream(fileName);
+        
+        if (!fileStream.is_open()) {
+            cout << "Could not open file " << fileName << " for reading." << endl;
+            return -1;
+        }
+
+        string line;
+        while (getline(fileStream, line)) {
+            initialString += line;
+        }
+
+        fileStream.close();
+
+        return 0;
+    }
+
+    int readCompressedString(string& fileName, int compressionType) {
+        ifstream fileStream(fileName);
+
+        if (!fileStream.is_open()) {
+            cout << "Could not open file " << fileName << " for reading." << endl;
+            return -1;
+        }
+
+        string line;
+        int i = 1;
+        while (getline(fileStream, line)) {
+            if (i == 2) {
+                if (compressionType == 1) { // bits compression
+                    compressed = line;
+                }
+                else { // decimal compression
+                    convertToBits(line);
+                }
+            }
+            else if (i == 4) {
+                addedBits = stoi(line);
+            }
+            else if (i == 6) {
+                root = deserialize(line);
+            }
+            i++;
+        }
+
+        fileStream.close();
+
+        return 0;
+    }
+
+    void createHuffmanTree() {
+        if (initialString.empty())
+            return;
+
+        buildHuffmanTree();
+        buildEncodingTable();
+    }
+
+    void compressString() {
+        if (initialString.empty())
+            return;
+
+        compressed.reserve(initialString.size() * root->depth);
+
+        for (auto ch : initialString) {
+            compressed.append(encodingTable[ch]);
+        }
+
+        if (compressed.size() % 8 != 0) {
+            do {
+                compressed.push_back('0');
+                addedBits++;
+            } while (compressed.size() % 8 != 0);
+        }
+    }
+
+    void writeStringInFile(string& fileName, int compressionType) {
+        ofstream fileStream(fileName);
+
+        if (!fileStream.is_open()) {
+            cout << "Could not open file " << fileName << " for writing." << endl;
+            return;
+        }
+
+        if (compressionType == 1) { // bit compression
+            fileStream << "Compressed string:" << endl << compressed << endl << "Added bits:" << endl << addedBits << endl << "Huffman tree:" << endl;
+        }
+        else { // decimal compression
+            string compressedInDecimalFormat = convertByteOutputToNumbers();
+            fileStream << "Compressed string:" << endl << compressedInDecimalFormat << endl << "Added bits:" << endl << addedBits << endl << "Huffman tree:" << endl;
+        }
+
+        serialize(fileStream);
+
+        fileStream.close();
+    }
+
+    void decompressString() {
+        decompressStringHelper(compressed, initialString);
+    }
+
+    string getInitialString() {
+        return initialString;
     }
 };
 
-// TODO: move stdin/stdout from/to file
+
+// TODO: change bit to binary
+// TODO: check function names
+// TODO: check if reserve is available at some strings
+// TODO: testing
+// TODO: implement UI
 int main() {
-    clock_t tStart = clock();
-
-    string fileName;
-    cin >> fileName;
-
-    cout << "Filename is: " << fileName << endl;
-
-    if (cin.fail()) {
-        cout << "Something went wrong with last input command. Ending this program." << endl;
-        return 1;
-    }
-
-    ifstream input;
-    input.open(fileName);
-
-    if (!input.is_open()) {
-        cout << "Could not open " << fileName << ". Check the spelling again" << endl;
-        return 2;
-    }
-
-    string fileString = "", str;
-    while (getline(input, str)) {
-        fileString.append(str);
-    }
-
-    cout << fileString << endl;
+    string inputFile, outputFile;
+    cin >> inputFile;
 
     //string abc = "ABRACADABRA";
     //string abc = "A13aa-bAaB-1B3a-Aaa3b-AA3333--bbaBa---aaabbBBbab--abBaab-BBB-B--";
     //string abc = "AByEcc 11ayXEz2zbbB BBBCbdd1X 22121cdbECdzzz  22bEbCcccddCECECECECECECbdb1b1d111";
-    string abc = "ACAeBbCABbAbbAA";
+    //string abc = "ACAeBbCABbAbbAA";
+    
+    clock_t tStart = clock();
+    /*
+    HuffmanTree h;
+    h.readFromFile(inputFile);
+    h.createHuffmanTree();
+    h.compressString();
+    h.writeStringInFile(outputFile, 1);
+    */
+    
+    HuffmanTree h;
+    h.readCompressedString(inputFile, 2);
+    h.decompressString();
+    string res = h.getInitialString();
+    cout << res << endl;
+    cout << h.getDegreeOfCompression() << "%" << endl;
 
-    unordered_map<char, int> freq;
-    priority_queue<node*, vector<node*>, CompareFrequencies> minFreq;
-    calculateFrequenciesFromString(abc, freq);
-    getFreq(freq, minFreq);
-
-    HuffmanTree h(minFreq);
-    string compressedString = h.compressString(abc);
-    cout << compressedString << endl;
-
-    string convertedString = h.convertByteOutputToNumbers(compressedString);
-    cout << convertedString << endl;
-
-    h.serializeTree();
-    h.print();
-
-    cout << abc << endl;
-    cout << h.restoreInitialString() << endl;
-    cout << h.getDegreeOfCompression(abc, compressedString) << "%" << endl;
-
-    cout << "Execution time: " << (double)(clock() - tStart)/CLOCKS_PER_SEC << endl;
+    cout << "Execution time: " << (double)(clock() - tStart) / CLOCKS_PER_SEC << endl;
 
     return 0;
 }
