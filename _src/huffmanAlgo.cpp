@@ -3,7 +3,6 @@
 #include <string>
 #include <unordered_map>
 #include <queue>
-#include <time.h>
 using namespace std;
 
 struct node {
@@ -177,7 +176,7 @@ private:
         }
     }
 
-    string convertByteOutputToNumbers() {
+    string convertBinaryOutputToDecimal() {
         string converted = "";
         int optimalSize = (compressed.size() % 8) * 4;
         converted.reserve(optimalSize);
@@ -201,7 +200,7 @@ private:
         return converted;
     }
 
-    void decimalToBits(int& num) {
+    void decimalNumToBinaryNum(int& num) {
         int bits[] = { 128, 64, 32, 16, 8, 4, 2, 1 };
         for (int i = 0; i < 8; i++) {
             if (num >= bits[i]) {
@@ -214,15 +213,14 @@ private:
         }
     }
 
-    void convertToBits(string& decimalInput) {
+    void convertDecimalToBinary(string& decimalInput) {
         string number;
         number.reserve(3);
 
-        // TODO: compressed.reserve()
         for (auto ch : decimalInput) {
             if (ch == ' ') {
                 int num = stoi(number);
-                decimalToBits(num);
+                decimalNumToBinaryNum(num);
                 number.clear();
             }
             else {
@@ -241,7 +239,11 @@ public:
     }
 
     double getDegreeOfCompression() {
-        double initialBytes = initialString.size() * 8;
+        if (initialString.empty()) {
+            return 0;
+        }
+
+        double initialBytes = (initialString.size()) * 8;
         return (compressed.size() / initialBytes) * 100;
     }
 
@@ -263,7 +265,7 @@ public:
         return 0;
     }
 
-    int readCompressedString(string& fileName, int compressionType) {
+    int readCompressedString(string& fileName) {
         ifstream fileStream(fileName);
 
         if (!fileStream.is_open()) {
@@ -275,11 +277,11 @@ public:
         int i = 1;
         while (getline(fileStream, line)) {
             if (i == 2) {
-                if (compressionType == 1) { // bits compression
+                if (!line.empty() && line[0] != ' ' && line[1] != ' ' && line[2] != ' ' && line[3] != ' ') { // binary compression
                     compressed = line;
                 }
                 else { // decimal compression
-                    convertToBits(line);
+                    convertDecimalToBinary(line);
                 }
             }
             else if (i == 4) {
@@ -322,25 +324,32 @@ public:
         }
     }
 
-    void writeStringInFile(string& fileName, int compressionType) {
+    int writeStringInFile(string& fileName, int compressionType) {
+        if (compressionType != 1 && compressionType != 2) {
+            cout << "Wrong compression type." << endl;
+            return -1;
+        }
+
         ofstream fileStream(fileName);
 
         if (!fileStream.is_open()) {
             cout << "Could not open file " << fileName << " for writing." << endl;
-            return;
+            return -1;
         }
 
-        if (compressionType == 1) { // bit compression
+        if (compressionType == 1) { // binary compression
             fileStream << "Compressed string:" << endl << compressed << endl << "Added bits:" << endl << addedBits << endl << "Huffman tree:" << endl;
         }
-        else { // decimal compression
-            string compressedInDecimalFormat = convertByteOutputToNumbers();
+        else if (compressionType == 2) { // decimal compression
+            string compressedInDecimalFormat = convertBinaryOutputToDecimal();
             fileStream << "Compressed string:" << endl << compressedInDecimalFormat << endl << "Added bits:" << endl << addedBits << endl << "Huffman tree:" << endl;
         }
 
         serialize(fileStream);
 
         fileStream.close();
+
+        return 0;
     }
 
     void decompressString() {
@@ -352,38 +361,69 @@ public:
     }
 };
 
-
-// TODO: change bit to binary
-// TODO: check function names
-// TODO: check if reserve is available at some strings
-// TODO: testing
-// TODO: implement UI
 int main() {
-    string inputFile, outputFile;
-    cin >> inputFile;
+    cout << "1. Compress from a file" << endl << "2. Decompress from a file" << endl << "Type \"1\" or \"2\" to indicate your intention:" << endl;
 
-    //string abc = "ABRACADABRA";
-    //string abc = "A13aa-bAaB-1B3a-Aaa3b-AA3333--bbaBa---aaabbBBbab--abBaab-BBB-B--";
-    //string abc = "AByEcc 11ayXEz2zbbB BBBCbdd1X 22121cdbECdzzz  22bEbCcccddCECECECECECECbdb1b1d111";
-    //string abc = "ACAeBbCABbAbbAA";
-    
-    clock_t tStart = clock();
-    /*
-    HuffmanTree h;
-    h.readFromFile(inputFile);
-    h.createHuffmanTree();
-    h.compressString();
-    h.writeStringInFile(outputFile, 1);
-    */
-    
-    HuffmanTree h;
-    h.readCompressedString(inputFile, 2);
-    h.decompressString();
-    string res = h.getInitialString();
-    cout << res << endl;
-    cout << h.getDegreeOfCompression() << "%" << endl;
+    string option = "";
 
-    cout << "Execution time: " << (double)(clock() - tStart) / CLOCKS_PER_SEC << endl;
+    while (getline(cin, option) && (option != "1" && option != "2")) {
+        cout << "Invalid input. Try typing only \"1\" or only \"2\":" << endl;
+    }
+
+    cout << "Type in the name of the input file (with path where needed): " << endl;
+    string fileName;
+    getline(cin, fileName);
+    
+    if (option == "1") {
+        HuffmanTree h;
+        if (h.readFromFile(fileName) == -1) {
+            cout << "Invalid name of file. Ending process..." << endl;
+            return -1;
+        }
+
+        h.createHuffmanTree();
+        h.compressString();
+
+        cout << "In what format would you like the compressed string to be saved? (binary/decimal)" << endl;
+        string format = "";
+        while (getline(cin, format) && (format != "binary" && format != "decimal")) {
+            cout << "Invalid format. Either type \"binary\" or \"decimal\":" << endl;
+        }
+
+        cout << "Type the name of the file where you want the compressed string to be saved (the name should not be the same as the name of the input file):" << endl;
+        string outputFileName = fileName;
+        
+        while (getline(cin, outputFileName) && outputFileName == fileName) {
+            cout << "Choose another name:" << endl;
+        }
+
+        int formatType;
+        if (format == "binary") {
+            formatType = 1;
+        }
+        else {
+            formatType = 2;
+        }
+
+        if (h.writeStringInFile(outputFileName, formatType) == -1) {
+            cout << "Writing is stopped" << endl;
+            return -1;
+        }
+
+        cout << "Degree of compression is: " << h.getDegreeOfCompression() << "%" << endl;
+    }
+    else {
+        HuffmanTree h;
+
+        if (h.readCompressedString(fileName) == -1) {
+            cout << "Invalid name of file. Ending process..." << endl;
+            return -1;
+        }
+
+        h.decompressString();
+        cout << "Initial string is: " << h.getInitialString() << endl;
+        cout << "Degree of compression is: " << h.getDegreeOfCompression() << "%" << endl;
+    }
 
     return 0;
 }
