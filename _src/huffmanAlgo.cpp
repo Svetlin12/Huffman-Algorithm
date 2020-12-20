@@ -6,13 +6,14 @@
 using namespace std;
 
 struct node {
-    char data;
-    int frequency, depth = 0;
+    char data; // '\0' if not a leaf
+    int frequency, depth = 0; // depth is counted as such: 0 is the depth of the leafs and it goes up by 1
     node* left, * right;
 
     node(int frequency, char data = '\0', node* left = nullptr, node* right = nullptr) : data(data), frequency(frequency), left(left), right(right) {}
 };
 
+// used to sort nodes by their frequency in the priority_queue (min heap)
 class CompareFrequencies {
 public:
     bool operator() (node* node1, node* node2) {
@@ -34,15 +35,18 @@ private:
         unordered_map<char, int> freq;
         priority_queue<node*, vector<node*>, CompareFrequencies> minFreq;
 
+        // create the frequency table
         for (auto ch : initialString) {
             freq[ch]++;
         }
 
+        // for each char and its frequency, create a node and put it in the min heap
         for (auto kvp : freq) {
             node* newNode = new node(kvp.second, kvp.first);
             minFreq.push(newNode);
         }
 
+        // get the two topmost min nodes from the min heap and combine them into a new one and push the new one into the min heap
         while (minFreq.size() != 1) {
             node* first = minFreq.top();
             minFreq.pop();
@@ -61,6 +65,7 @@ private:
         root = minFreq.top();
     }
 
+    // each left turn is a 0 and each right turn is a 1 in the code with which a character will be associated
     void buildEncodingTableDFSTraversal(node* curr, string& code) {
         if (curr == nullptr)
             return;
@@ -79,12 +84,17 @@ private:
         code.pop_back();
     }
 
+    // build the encoding table (for each initial character there is a corresponding code in binary with which it will be compressed)
     void buildEncodingTable() {
         string code = "";
         code.reserve(root->depth + 1);
         buildEncodingTableDFSTraversal(root, code);
     }
 
+    /* 
+        Break down the huffman tree to save it in a file and later use it to decompress the string it compressed.
+        A null child is represented as "-1". This algorithm is essentialy a BFS traversal.
+    */
     void serialize(ofstream& fileStream) {
         queue<node*> q;
         q.push(root);
@@ -106,18 +116,20 @@ private:
         }
     }
 
+    // reconstruct a serialized tree in order to use it to decompress a string
     node* deserialize(string& serialized) {
-        if (serialized.empty() || serialized[0] == '-')
+        if (serialized.empty() || serialized[0] == '-') // do nothing if the tree is empty
             return nullptr;
 
         string temp = "";
-        queue<pair<int, char>> nodeVals;
+        queue<pair<int, char>> nodeVals; // pair: character's frequency, character ('\0' if internal node)
         for (int i = 0; i < serialized.size(); i++) {
             if (serialized[i] == ' ') {
                 nodeVals.push(pair<int, char>(stoi(temp), '\0'));
                 temp = "";
                 continue;
             }
+            // if the last added node is a leaf, then change its character value (this means it will be of the form: [frequency] -1 -1 [value])
             else if (i + 6 < serialized.size() && serialized[i] == '-' && serialized[i + 1] == '1' && serialized[i + 3] == '-' && serialized[i + 4] == '1') {
                 nodeVals.back().second = serialized[i + 6];
                 i += 7;
@@ -130,12 +142,19 @@ private:
         nodeVals.pop();
         queue<node*> q;
         q.push(newRoot);
+
+        /* 
+            connect the nodes - pop 2 values from nodeVals (left and right child) and construct nodes from these values, 
+            then connect them with the firstly added node in the queue q
+        */
         while (!q.empty() && !nodeVals.empty()) {
             node* curr = q.front();
             q.pop();
 
             pair<int, char> currChild = nodeVals.front();
             nodeVals.pop();
+
+            // if child is not a null child
             if (currChild.first != -1) {
                 curr->left = new node(currChild.first, currChild.second);
 
@@ -146,6 +165,7 @@ private:
 
             currChild = nodeVals.front();
             nodeVals.pop();
+
             if (currChild.first != -1) {
                 curr->right = new node(currChild.first, currChild.second);
 
@@ -158,6 +178,11 @@ private:
         return newRoot;
     }
 
+    /*
+        go through the compressed string and traverse the Huffman tree using it's values
+        0 -> to go left and 1 -> to go right
+        whenever a child node is reached, start the traversal again from the root
+    */
     void decompressStringHelper(string& tree, string& restored) {
         node* traverse = root;
         int i = 0;
@@ -306,6 +331,7 @@ public:
         buildEncodingTable();
     }
 
+    // go through the initial string and for each of its characters, replace them with their corresponding code
     void compressString() {
         if (initialString.empty())
             return;
@@ -316,6 +342,7 @@ public:
             compressed.append(encodingTable[ch]);
         }
 
+        // if the compressed string's final byte is not of length 8, then complete it with 0s
         if (compressed.size() % 8 != 0) {
             do {
                 compressed.push_back('0');
