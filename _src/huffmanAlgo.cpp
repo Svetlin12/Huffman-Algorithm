@@ -3,6 +3,7 @@
 #include <string>
 #include <unordered_map>
 #include <queue>
+#include <bitset>
 using namespace std;
 
 struct node {
@@ -28,7 +29,7 @@ private:
 
     node* root;
     string initialString, compressed;
-    int addedBits;
+    int addedBits, inputFileSize, outputFileSize;
     unordered_map<char, string> encodingTable;
 
     void buildHuffmanTree() {  
@@ -98,16 +99,19 @@ private:
     void serialize(ofstream& fileStream) {
         queue<node*> q;
         q.push(root);
+        int8_t leafVal = -1;
         while (!q.empty()) {
             node* curr = q.front();
             q.pop();
             if (curr == nullptr) {
-                fileStream << "-1 ";
+                //fileStream << "-1 ";
+                fileStream << +leafVal;
                 continue;
             }
             fileStream << curr->frequency << " ";
             if (curr->data) {
-                fileStream << "-1 -1 " << curr->data << " ";
+                //fileStream << "-1 -1 " << curr->data << " ";
+                fileStream << +leafVal << " " << +leafVal << " " << curr->data << " ";
             }
             else {
                 q.push(curr->left);
@@ -183,7 +187,7 @@ private:
         0 -> to go left and 1 -> to go right
         whenever a child node is reached, start the traversal again from the root
     */
-    void decompressStringHelper(string& tree, string& restored) {
+    void decompressStringHelper(string& tree) {
         node* traverse = root;
         int i = 0;
         while (i < tree.size() - addedBits) {
@@ -195,37 +199,37 @@ private:
             }
 
             if (traverse->data != '\0') {
-                restored.push_back(traverse->data);
+                initialString.push_back(traverse->data);
                 traverse = root;
             }
         }
     }
 
-    string convertBinaryOutputToDecimal() {
-        string converted = "";
-        int optimalSize = (compressed.size() % 8) * 4;
-        converted.reserve(optimalSize);
-
+    void writeInDecimalHelper(ofstream& fileStream, ofstream& fileForDecimalRepresentation) {
         int counter = 0;
-        int byteNumbers[] = { 128, 64, 32, 16, 8, 4, 2, 1 };
-        int currNum = 0;
-        for (char ch : compressed) {
-            if (ch == '1') {
+        const int byteNumbers[] = { 128, 64, 32, 16, 8, 4, 2, 1 };
+        uint8_t currNum = 0;
+        for (int i = 0; i < compressed.size(); i++) {
+            if (compressed[i] == '1') {
                 currNum += byteNumbers[counter];
             }
 
             counter++;
             if (counter == 8) {
-                converted += to_string(currNum) + " ";
+                fileStream << currNum;
+                if (i == compressed.size() - 1) {
+                    fileForDecimalRepresentation << +currNum;
+                }
+                else {
+                    fileForDecimalRepresentation << +currNum << " ";
+                }
                 currNum = 0;
                 counter = 0;
             }
         }
-
-        return converted;
     }
 
-    void decimalNumToBinaryNum(int& num) {
+    void decimalNumToBinaryNum(int num) {
         int bits[] = { 128, 64, 32, 16, 8, 4, 2, 1 };
         for (int i = 0; i < 8; i++) {
             if (num >= bits[i]) {
@@ -234,22 +238,6 @@ private:
             }
             else {
                 compressed.push_back('0');
-            }
-        }
-    }
-
-    void convertDecimalToBinary(string& decimalInput) {
-        string number;
-        number.reserve(3);
-
-        for (auto ch : decimalInput) {
-            if (ch == ' ') {
-                int num = stoi(number);
-                decimalNumToBinaryNum(num);
-                number.clear();
-            }
-            else {
-                number.push_back(ch);
             }
         }
     }
@@ -264,12 +252,11 @@ public:
     }
 
     double getDegreeOfCompression() {
-        if (initialString.empty()) {
+        if (inputFileSize == 0) {
             return 0;
         }
 
-        double initialBytes = (initialString.size()) * 8;
-        return (compressed.size() / initialBytes) * 100;
+        return ((double)outputFileSize / inputFileSize) * 100;
     }
 
     int readFromFile(string& fileName) {
@@ -287,10 +274,39 @@ public:
 
         fileStream.close();
 
+        ifstream stream(fileName, ifstream::ate | ifstream::binary);
+        inputFileSize = stream.tellg();
+
+        stream.close();
+
         return 0;
     }
 
     int readCompressedString(string& fileName) {
+        string onlyFileName = fileName.substr(0, fileName.size() - 15); // 15 - remove _compressed.txt from the string
+
+        string additionalFileName = onlyFileName + "_additional.txt";
+        ifstream additional(additionalFileName);
+
+        if (!additional.is_open()) {
+            cout << "Could not open file " << additionalFileName << " for reading." << endl;
+            return -1;
+        }
+
+        string line;
+        int i = 1;
+        while (getline(additional, line)) {
+            if (i == 1) {
+                root = deserialize(line);
+            }
+            else if (i == 2) {
+                addedBits = stoi(line);
+            }
+            i++;
+        }
+
+        additional.close();
+
         ifstream fileStream(fileName);
 
         if (!fileStream.is_open()) {
@@ -298,28 +314,18 @@ public:
             return -1;
         }
 
-        string line;
-        int i = 1;
-        while (getline(fileStream, line)) {
-            if (i == 2) {
-                if (!line.empty() && line[0] != ' ' && line[1] != ' ' && line[2] != ' ' && line[3] != ' ') { // binary compression
-                    compressed = line;
-                }
-                else { // decimal compression
-                    convertDecimalToBinary(line);
-                }
-            }
-            else if (i == 4) {
-                addedBits = stoi(line);
-            }
-            else if (i == 6) {
-                root = deserialize(line);
-            }
-            i++;
+        char bit;
+        while (fileStream.get(bit)) {
+            unsigned char ch = bit;
+            decimalNumToBinaryNum(ch);
         }
 
         fileStream.close();
 
+        ifstream stream(fileName, ifstream::ate | ifstream::binary);
+        outputFileSize = stream.tellg();
+
+        stream.close();
         return 0;
     }
 
@@ -351,36 +357,79 @@ public:
         }
     }
 
-    int writeStringInFile(string& fileName, int compressionType) {
-        if (compressionType != 1 && compressionType != 2) {
-            cout << "Wrong compression type." << endl;
-            return -1;
+    int writeStringInFile(string& initalFileName, int type) {       
+        if (type == 1) {
+            string onlyInitialName = initalFileName.substr(0, initalFileName.size() - 4); // 4 - remove .txt from the string
+
+            string compressedFileName = onlyInitialName + "_compressed.txt";
+            ofstream compressedFileStream(compressedFileName, ofstream::binary);
+            if (!compressedFileStream.is_open()) {
+                cout << "Could not open/create file " << compressedFileName << " for writing" << endl;
+                return -1;
+            }
+
+            string additionalInfoFileName = onlyInitialName + "_additional.txt";
+            ofstream additional(additionalInfoFileName);
+            if (!additional.is_open()) {
+                cout << "Could not open/create file " << additionalInfoFileName << " for writing" << endl;
+                return -1;
+            }
+
+            string decimalRepresentationFileName = onlyInitialName + "_decimal.txt";
+            ofstream decimalRepresentFileStream(decimalRepresentationFileName);
+            if (!decimalRepresentFileStream.is_open()) {
+                cout << "Could not open/create file " << decimalRepresentationFileName << " for writing" << endl;
+                return -1;
+            }
+
+            string binaryRepresentationFileName = onlyInitialName + "_binary.txt";
+            ofstream binaryRepresentFileStream(binaryRepresentationFileName);
+            if (!binaryRepresentFileStream.is_open()) {
+                cout << "Could not open/create file " << binaryRepresentationFileName << " for writing" << endl;
+                return -1;
+            }
+
+            binaryRepresentFileStream << compressed;
+            writeInDecimalHelper(compressedFileStream, decimalRepresentFileStream);
+
+            serialize(additional);
+            uint8_t bits = addedBits;
+            additional << endl << +bits << endl;
+
+            compressedFileStream.close();
+            additional.close();
+            decimalRepresentFileStream.close();
+
+            ifstream stream(compressedFileName, ifstream::ate | ifstream::binary);
+            outputFileSize = stream.tellg();
+
+            stream.close();
         }
+        else if (type == 2) {
+            string onlyInitialName = initalFileName.substr(0, initalFileName.size() - 15); // 15 - remove _compressed.txt from the string
+            string decompressedFileName = onlyInitialName + "_decompressed.txt";
+            ofstream decompressedFileStream(decompressedFileName);
 
-        ofstream fileStream(fileName);
+            if (!decompressedFileStream.is_open()) {
+                cout << "Could not open/create file " << decompressedFileName << " for writing" << endl;
+                return -1;
+            }
 
-        if (!fileStream.is_open()) {
-            cout << "Could not open file " << fileName << " for writing." << endl;
-            return -1;
+            decompressedFileStream << initialString;
+
+            decompressedFileStream.close();
+
+            ifstream stream(decompressedFileName, ifstream::ate | ifstream::binary);
+            inputFileSize = stream.tellg();
+
+            stream.close();
         }
-
-        if (compressionType == 1) { // binary compression
-            fileStream << "Compressed string:" << endl << compressed << endl << "Added bits:" << endl << addedBits << endl << "Huffman tree:" << endl;
-        }
-        else if (compressionType == 2) { // decimal compression
-            string compressedInDecimalFormat = convertBinaryOutputToDecimal();
-            fileStream << "Compressed string:" << endl << compressedInDecimalFormat << endl << "Added bits:" << endl << addedBits << endl << "Huffman tree:" << endl;
-        }
-
-        serialize(fileStream);
-
-        fileStream.close();
 
         return 0;
     }
 
     void decompressString() {
-        decompressStringHelper(compressed, initialString);
+        decompressStringHelper(compressed);
     }
 
     string getInitialString() {
@@ -411,28 +460,7 @@ int main() {
         h.createHuffmanTree();
         h.compressString();
 
-        cout << "In what format would you like the compressed string to be saved? (binary/decimal)" << endl;
-        string format = "";
-        while (getline(cin, format) && (format != "binary" && format != "decimal")) {
-            cout << "Invalid format. Either type \"binary\" or \"decimal\":" << endl;
-        }
-
-        cout << "Type the name of the file where you want the compressed string to be saved (the name should not be the same as the name of the input file):" << endl;
-        string outputFileName = fileName;
-        
-        while (getline(cin, outputFileName) && outputFileName == fileName) {
-            cout << "Choose another name:" << endl;
-        }
-
-        int formatType;
-        if (format == "binary") {
-            formatType = 1;
-        }
-        else {
-            formatType = 2;
-        }
-
-        if (h.writeStringInFile(outputFileName, formatType) == -1) {
+        if (h.writeStringInFile(fileName, 1) == -1) {
             cout << "Writing is stopped" << endl;
             return -1;
         }
@@ -448,7 +476,7 @@ int main() {
         }
 
         h.decompressString();
-        cout << "Initial string is: " << h.getInitialString() << endl;
+        h.writeStringInFile(fileName, 2);
         cout << "Degree of compression is: " << h.getDegreeOfCompression() << "%" << endl;
     }
 
