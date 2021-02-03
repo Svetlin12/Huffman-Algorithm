@@ -3,7 +3,6 @@
 #include <string>
 #include <unordered_map>
 #include <queue>
-#include <bitset>
 using namespace std;
 
 struct node {
@@ -27,14 +26,14 @@ public:
 class HuffmanTree {
 private:
 
-    node* root;
-    string initialString, compressed;
-    int addedBits, inputFileSize, outputFileSize;
-    unordered_map<char, string> encodingTable;
+    node* root; // root of huffman tree
+    string initialString, compressed; // initialString - place to store the string that is in the input file; compressed - store the compressed string
+    int addedBits, inputFileSize, outputFileSize; // in order to decompress the string we need to know the added 0s at the end of the binary representation we get from the compressed file; in the other variables we store the sizes of the output and input file in order to get the decompression percentage
+    unordered_map<char, string> encodingTable; // in this unordered map we store the binary representation of each character that we get from the huffman tree
 
     void buildHuffmanTree() {  
-        unordered_map<char, int> freq;
-        priority_queue<node*, vector<node*>, CompareFrequencies> minFreq;
+        unordered_map<char, int> freq; // char - its frequency in the string
+        priority_queue<node*, vector<node*>, CompareFrequencies> minFreq; // min heap which will store nodes and will be sorted by their frequency
 
         // create the frequency table
         for (auto ch : initialString) {
@@ -88,7 +87,7 @@ private:
     // build the encoding table (for each initial character there is a corresponding code in binary with which it will be compressed)
     void buildEncodingTable() {
         string code = "";
-        code.reserve(root->depth + 1);
+        code.reserve(root->depth + 1); // the maximum length of a code will be the height (or depth in this case) of the tree (we add 1 because of the end of string character)
         buildEncodingTableDFSTraversal(root, code);
     }
 
@@ -103,17 +102,22 @@ private:
         while (!q.empty()) {
             node* curr = q.front();
             q.pop();
-            if (curr == nullptr) {
-                //fileStream << "-1 ";
+            if (curr == nullptr) { // write -1 representing child of leaf node
                 fileStream << +leafVal;
                 continue;
             }
             fileStream << curr->frequency << " ";
             if (curr->data) {
-                //fileStream << "-1 -1 " << curr->data << " ";
-                fileStream << +leafVal << " " << +leafVal << " " << curr->data << " ";
+                fileStream << +leafVal << " " << +leafVal << " ";
+                if (curr->data == '\n') { // if the character is newline, write the char as '\n' rather than an actual newline because then it will bug the decomposition (it expects one line of huffman tree)
+                    fileStream << "\\n ";
+                }
+                else {
+                    fileStream << curr->data << " ";
+                }
             }
             else {
+                // always add left and right child
                 q.push(curr->left);
                 q.push(curr->right);
             }
@@ -128,15 +132,22 @@ private:
         string temp = "";
         queue<pair<int, char>> nodeVals; // pair: character's frequency, character ('\0' if internal node)
         for (int i = 0; i < serialized.size(); i++) {
+            // if space is met, then a node's frequency has been read fully
             if (serialized[i] == ' ') {
                 nodeVals.push(pair<int, char>(stoi(temp), '\0'));
-                temp = "";
+                temp = ""; // reset temp for next node
                 continue;
             }
             // if the last added node is a leaf, then change its character value (this means it will be of the form: [frequency] -1 -1 [value])
             else if (i + 6 < serialized.size() && serialized[i] == '-' && serialized[i + 1] == '1' && serialized[i + 3] == '-' && serialized[i + 4] == '1') {
-                nodeVals.back().second = serialized[i + 6];
-                i += 7;
+                if (i + 7 < serialized.size() && serialized[i + 6] == '\\' && serialized[i + 7] == 'n') {
+                    nodeVals.back().second = '\n';
+                    i += 8;
+                }
+                else {
+                    nodeVals.back().second = serialized[i + 6];
+                    i += 7;
+                }
                 continue;
             }
             temp += serialized[i];
@@ -207,7 +218,7 @@ private:
 
     void writeInDecimalHelper(ofstream& fileStream, ofstream& fileForDecimalRepresentation) {
         int counter = 0;
-        const int byteNumbers[] = { 128, 64, 32, 16, 8, 4, 2, 1 };
+        const int byteNumbers[] = { 128, 64, 32, 16, 8, 4, 2, 1 }; // use it in order to have reference of every bit value
         uint8_t currNum = 0;
         for (int i = 0; i < compressed.size(); i++) {
             if (compressed[i] == '1') {
@@ -218,7 +229,7 @@ private:
             if (counter == 8) {
                 fileStream << currNum;
                 if (i == compressed.size() - 1) {
-                    fileForDecimalRepresentation << +currNum;
+                    fileForDecimalRepresentation << +currNum; // add + in front of the variable in order to be written in its decimal representation instead of a character
                 }
                 else {
                     fileForDecimalRepresentation << +currNum << " ";
@@ -230,7 +241,7 @@ private:
     }
 
     void decimalNumToBinaryNum(int num) {
-        int bits[] = { 128, 64, 32, 16, 8, 4, 2, 1 };
+        int bits[] = { 128, 64, 32, 16, 8, 4, 2, 1 }; // used for reference of bit values
         for (int i = 0; i < 8; i++) {
             if (num >= bits[i]) {
                 compressed.push_back('1');
@@ -256,12 +267,14 @@ public:
             return 0;
         }
 
-        return ((double)outputFileSize / inputFileSize) * 100;
+        return ((double)outputFileSize / inputFileSize) * 100; // return in percentage form (force division's result to be double, otherwise it will be interpreted as integer)
     }
 
+    // used when the user gives file to be compressed
     int readFromFile(string& fileName) {
         ifstream fileStream(fileName);
         
+        // check if file stream is opened
         if (!fileStream.is_open()) {
             cout << "Could not open file " << fileName << " for reading." << endl;
             return -1;
@@ -269,23 +282,27 @@ public:
 
         string line;
         while (getline(fileStream, line)) {
+            if (initialString.size() != 0) { // add newline after the first getline
+                initialString += "\n";
+            }
             initialString += line;
         }
 
         fileStream.close();
 
-        ifstream stream(fileName, ifstream::ate | ifstream::binary);
-        inputFileSize = stream.tellg();
+        ifstream stream(fileName, ifstream::ate | ifstream::binary); // open the file stream at the end of the file because we want to get the file size and open the stream in binary mode
+        inputFileSize = stream.tellg(); // returns the position of the input sequence - meaning that it will return the file size since the current position is at the end
 
         stream.close();
 
         return 0;
     }
 
+    // used when the user gives a file to be decompressed
     int readCompressedString(string& fileName) {
         string onlyFileName = fileName.substr(0, fileName.size() - 15); // 15 - remove _compressed.txt from the string
 
-        string additionalFileName = onlyFileName + "_additional.txt";
+        string additionalFileName = onlyFileName + "_additional.txt"; // the name of the file where we will get the huffman tree and added 0s count
         ifstream additional(additionalFileName);
 
         if (!additional.is_open()) {
@@ -295,6 +312,10 @@ public:
 
         string line;
         int i = 1;
+        /*
+        * the first line will contain the serialized huffman tree
+        * the next will contain an integer representing the number of 0s added in the binary representation of the compressed string
+        */
         while (getline(additional, line)) {
             if (i == 1) {
                 root = deserialize(line);
@@ -307,7 +328,7 @@ public:
 
         additional.close();
 
-        ifstream fileStream(fileName);
+        ifstream fileStream(fileName, ios::binary | ios::in); // open the input file stream in binary mode because we will need to read the file bit by bit
 
         if (!fileStream.is_open()) {
             cout << "Could not open file " << fileName << " for reading." << endl;
@@ -317,12 +338,12 @@ public:
         char bit;
         while (fileStream.get(bit)) {
             unsigned char ch = bit;
-            decimalNumToBinaryNum(ch);
+            decimalNumToBinaryNum(ch); // ch is converted to int because the parameter of the function is of type int, so we want to convert the decimal representation of the bit to a binary one
         }
 
         fileStream.close();
 
-        ifstream stream(fileName, ifstream::ate | ifstream::binary);
+        ifstream stream(fileName, ifstream::ate | ifstream::binary); // get the size of the compressed file; this technique is explained in the function above
         outputFileSize = stream.tellg();
 
         stream.close();
@@ -357,58 +378,60 @@ public:
         }
     }
 
-    int writeStringInFile(string& initalFileName, int type) {       
+    int writeStringInFile(string& initalFileName, int type) {    
+        // when the user has given a file to be compressed, we want to save the compressed file and its additional info
         if (type == 1) {
             string onlyInitialName = initalFileName.substr(0, initalFileName.size() - 4); // 4 - remove .txt from the string
 
             string compressedFileName = onlyInitialName + "_compressed.txt";
-            ofstream compressedFileStream(compressedFileName, ofstream::binary);
+            ofstream compressedFileStream(compressedFileName, ofstream::binary); // open or create the file where will store the compressed string in binary format
             if (!compressedFileStream.is_open()) {
                 cout << "Could not open/create file " << compressedFileName << " for writing" << endl;
                 return -1;
             }
 
-            string additionalInfoFileName = onlyInitialName + "_additional.txt";
+            string additionalInfoFileName = onlyInitialName + "_additional.txt"; // open or create the file in which we will store the huffman tree and the added 0s count
             ofstream additional(additionalInfoFileName);
             if (!additional.is_open()) {
                 cout << "Could not open/create file " << additionalInfoFileName << " for writing" << endl;
                 return -1;
             }
 
-            string decimalRepresentationFileName = onlyInitialName + "_decimal.txt";
+            string decimalRepresentationFileName = onlyInitialName + "_decimal.txt"; // file for decimal representation of the compressed string
             ofstream decimalRepresentFileStream(decimalRepresentationFileName);
             if (!decimalRepresentFileStream.is_open()) {
                 cout << "Could not open/create file " << decimalRepresentationFileName << " for writing" << endl;
                 return -1;
             }
 
-            string binaryRepresentationFileName = onlyInitialName + "_binary.txt";
+            string binaryRepresentationFileName = onlyInitialName + "_binary.txt"; // file for binary representation of the compressed string
             ofstream binaryRepresentFileStream(binaryRepresentationFileName);
             if (!binaryRepresentFileStream.is_open()) {
                 cout << "Could not open/create file " << binaryRepresentationFileName << " for writing" << endl;
                 return -1;
             }
 
-            binaryRepresentFileStream << compressed;
-            writeInDecimalHelper(compressedFileStream, decimalRepresentFileStream);
+            binaryRepresentFileStream << compressed; // write the binary representation of the compressed string
+            writeInDecimalHelper(compressedFileStream, decimalRepresentFileStream); // write the decimal representation of the compressed string and write the true compressed string at the same time
 
             serialize(additional);
             uint8_t bits = addedBits;
-            additional << endl << +bits << endl;
+            additional << endl << +bits << endl; // write the additional info (serialized huffman tree and added 0s count)
 
             compressedFileStream.close();
             additional.close();
             decimalRepresentFileStream.close();
 
-            ifstream stream(compressedFileName, ifstream::ate | ifstream::binary);
+            ifstream stream(compressedFileName, ifstream::ate | ifstream::binary); // compute the size of the compressed file; explained in the first read function
             outputFileSize = stream.tellg();
 
             stream.close();
         }
+        // when the user has given a file to be decompressed, we want to save the decompressed string
         else if (type == 2) {
             string onlyInitialName = initalFileName.substr(0, initalFileName.size() - 15); // 15 - remove _compressed.txt from the string
             string decompressedFileName = onlyInitialName + "_decompressed.txt";
-            ofstream decompressedFileStream(decompressedFileName);
+            ofstream decompressedFileStream(decompressedFileName, ofstream::trunc); // create or open the file where we will save the decompressed string
 
             if (!decompressedFileStream.is_open()) {
                 cout << "Could not open/create file " << decompressedFileName << " for writing" << endl;
@@ -419,6 +442,7 @@ public:
 
             decompressedFileStream.close();
 
+            // get size of output file
             ifstream stream(decompressedFileName, ifstream::ate | ifstream::binary);
             inputFileSize = stream.tellg();
 
@@ -430,10 +454,6 @@ public:
 
     void decompressString() {
         decompressStringHelper(compressed);
-    }
-
-    string getInitialString() {
-        return initialString;
     }
 };
 
